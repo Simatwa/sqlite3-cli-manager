@@ -1,4 +1,14 @@
-# sqlite3-cli-manager
+<h1 align="center">sqlite3-cli-manager</h1>
+
+<p align="center">
+<a href="https://github.com/Simatwa/sqlite3-cli-manager/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/static/v1?logo=GPL&color=Blue&message=MIT&label=License"/></a>
+<a href="https://github.com/psf/black"><img alt="Black" src="https://img.shields.io/badge/code%20style-black-000000.svg"/></a>
+<a href="https://github.com/Simatwa/sqlite3-cli-manager/actions/workflows/python-package.yml"><img alt="Python Package flow" src="https://github.com/Simatwa/sqlite3-cli-manager/actions/workflows/python-test.yml/badge.svg?branch=main"/></a>
+<a href="https://github.com/Simatwa/sqlite3-cli-manager/releases/latest"><img src="https://img.shields.io/github/downloads/Simatwa/sqlite3-cli-manager/total?label=Asset%20Downloads&color=success" alt="Downloads"></img></a>
+<a href="https://github.com/Simatwa/sqlite3-cli-manager/releases"><img src="https://img.shields.io/github/v/release/Simatwa/sqlite3-cli-manager?color=success&label=Release&logo=github" alt="Latest release"></img></a>
+<a href="https://github.com/Simatwa/sqlite3-cli-manager/releases"><img src="https://img.shields.io/github/release-date/Simatwa/sqlite3-cli-manager?label=Release date&logo=github" alt="release date"></img></a>
+</p>
+
 Python tool designed to interact with SQLite databases via command-line interface
 
 # Pre-requisite
