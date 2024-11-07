@@ -110,11 +110,13 @@ Options:
 <summary><code>$ python manager.py interactive --help </code></summary>
 
 ```
-Usage: sqlite-manager interactive [OPTIONS] DATABASE
+Usage: manager.py interactive [OPTIONS] DATABASE
 
   Execute sql statements interactively
 
 Options:
+  -c, --color TEXT           Results font color
+  -j, --json                 Stdout results in json format
   -a, --auto-commit          Enable auto-commit
   -C, --disable-coloring     Stdout prompt text in white font color
   -S, --disable-suggestions  Do not suggest sql statements
@@ -128,7 +130,7 @@ Options:
 
 > For example:
 <details>
-<summary><code>$ sqlite-manager interactive test.db </code></summary>
+<summary><code>$ python manager.py interactive test.db </code></summary>
 
 ``` 
 Welcome to interactive sqlite3-db manager.
@@ -151,7 +153,7 @@ Repo : https://github.com/Simatwa/sqlite3-cli-manager
 │   3   │ 4      │ Fedora │ community │ None   │ 1      │ 2024-11-07 │ 2024-11-07 │
 │       │        │        │           │        │        │ 13:48:49   │ 13:48:49   │
 └───────┴────────┴────────┴───────────┴────────┴────────┴────────────┴────────────┘
-╭─[Smartwa@test.db]~[🕒16:55:56-💻00:00:03-⚡-3.9s] 
+╭─[Smartwa@localhost](smartBet2.db)~[🕒16:55:56-💻00:00:03-⚡-3.9s] 
 ╰─>select * from 
                   select * from Linux  
                   select * from sqlite_schema
@@ -251,3 +253,11 @@ Options:
 └───────┴────────┴────────────────────┴────────┴────────┴────────┴────────┘
 ```
 </details>
+
+# Contrubutions
+
+Contributions are always welcoming. Consider implementing new feature or fixing my bad code.
+
+## ToDo
+
+1. [] Let AI generate sql statements based on user's prompt.
