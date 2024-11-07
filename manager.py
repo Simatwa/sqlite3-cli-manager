@@ -158,12 +158,11 @@ class Interactive(cmd.Cmd):
 
         if not self.disable_coloring:
             cmd_prompt = (
-                f"╭─[`{Fore.CYAN}{getpass.getuser().capitalize()}@{self.db_manager.db_path}]`"
-                # f"(`{Fore.MAGENTA}{self.get_provider})`"
+                f"╭─[`{Fore.CYAN}{getpass.getuser().capitalize()}@'localhost']`"
+                f"(`{Fore.MAGENTA}{self.db_manager.db_path})`"
                 f"~[`{Fore.LIGHTWHITE_EX}🕒{Fore.BLUE}{current_time}-`"
                 f"{Fore.LIGHTWHITE_EX}💻{Fore.RED}{find_range(self.__init_time, time.time(), True)}-`"
                 f"{Fore.LIGHTWHITE_EX}⚡{Fore.YELLOW}{find_range(self.__start_time, self.__end_time)}s]`"
-                # f"\n╰─>"
             )
             whitelist = ["[", "]", "~", "-", "(", ")"]
             for character in whitelist:
@@ -172,11 +171,11 @@ class Interactive(cmd.Cmd):
 
         else:
             return (
-                f"╭─[{getpass.getuser().capitalize()}@{self.db_manager.db_path}]"
+                f"╭─[{getpass.getuser().capitalize()}@'localhost']"
+                f"({self.db_manager.db_path})"
                 f"~[🕒{current_time}"
                 f"-💻{find_range(self.__init_time, time.time(), True)}"
                 f"-⚡{find_range(self.__start_time, self.__end_time)}s]"
-                # "\n╰─>"
             )
 
     def cmdloop(self, intro=None):
