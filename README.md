@@ -260,4 +260,4 @@ Contributions are always welcoming. Consider implementing new feature or fixing 
 
 ## ToDo
 
-1. [] Let AI generate sql statements based on user's prompt.
+1. [ ] Let AI generate sql statements based on user's prompt.
