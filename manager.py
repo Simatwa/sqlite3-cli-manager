@@ -1,26 +1,25 @@
 #!/usr/bin/python3
-import sqlite3
-import click
-import rich
-import sys
 import os
-from rich.table import Table
-from rich.console import Console
+import cmd
+import sys
+import time
+import rich
+import click
+import sqlite3
+import getpass
+import datetime
 import typing as t
 from pathlib import Path
-import cmd
-import datetime
-import getpass
-import time
 from colorama import Fore
 from functools import wraps
+from rich.table import Table
+from rich.console import Console
 
 # prompt toolkit
 from prompt_toolkit import PromptSession
-from prompt_toolkit.completion import Completer, Completion, ThreadedCompleter
 from prompt_toolkit.document import Document
-from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
+from prompt_toolkit.completion import Completer, Completion, ThreadedCompleter
 
 __version__ = "0.0.2"
 
