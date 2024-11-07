@@ -27,6 +27,8 @@ cd sqlite3-cli-manager
 pip install -r requirements.txt
 ```
 
+Alternatively, you can download standalone executables for your system from [here](https://github.com/Simatwa/sqlite3-cli-manager/releases/latest).
+
 ## Usage 
 
 <details open>
