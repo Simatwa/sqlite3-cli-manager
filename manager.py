@@ -17,12 +17,12 @@ from functools import wraps
 
 # prompt toolkit
 from prompt_toolkit import PromptSession
-from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.completion import Completer, Completion, ThreadedCompleter
 from prompt_toolkit.document import Document
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 
 __author__ = "Smartwa"
 
@@ -109,7 +109,7 @@ class HistoryCompletions(Completer):
             return
         text = document.text
         history = self.session.history.get_strings()
-        for entry in reversed(history):
+        for entry in reversed(list(set(history))):
             if entry.startswith(text):
                 yield Completion(entry, start_position=-len(text))
 
@@ -129,19 +129,23 @@ class Interactive(cmd.Cmd):
         disable_coloring,
         disable_suggestions,
         new_history_thread,
+        json,
+        color,
     ):
         super().__init__()
         self.__start_time = time.time()
         self.__end_time = time.time()
         self.db_manager = Sqlite3Manager(db_path, auto_commit)
         self.disable_coloring = disable_coloring
+        self.json = json
+        self.color = color
         history_file_path = Path.home() / ".sqlite3-cli-manager-history.txt"
         if new_history_thread and history_file_path.exists():
             os.remove(history_file_path)
         history = FileHistory(history_file_path)
         self.completer_session = PromptSession(history=history)
-        self.completer_session.completer = HistoryCompletions(
-            self.completer_session, disable_suggestions
+        self.completer_session.completer = ThreadedCompleter(
+            HistoryCompletions(self.completer_session, disable_suggestions)
         )
 
     @property
@@ -283,7 +287,7 @@ class Interactive(cmd.Cmd):
     def do_tables(self, line):
         """Show database tables"""
         success, tables = self.db_manager.tables()
-        Commands.stdout_data(success, tables)
+        Commands.stdout_data(success, tables, json=self.json, color=self.color)
 
     @cli_error_handler
     def do_columns(self, line):
@@ -292,7 +296,7 @@ class Interactive(cmd.Cmd):
             columns <table-name>"""
         if line:
             success, tables = self.db_manager.table_columns(line)
-            Commands.stdout_data(success, tables)
+            Commands.stdout_data(success, tables, json=self.json, color=self.color)
         else:
             click.secho("Table name is required.", fg="yellow")
 
@@ -305,7 +309,8 @@ class Interactive(cmd.Cmd):
         else:
             self.__start_time = time.time()
             success, response = self.db_manager.execute_sql_command(line)
-            Commands.stdout_data(success, response)
+            Commands.stdout_data(success, response, json=self.json, color=self.color)
+            self.__end_time = time.time()
 
     def do_exit(self, line):
         """Quit this program"""
@@ -397,6 +402,13 @@ class Commands:
     @staticmethod
     @click.command()
     @click.argument("database", type=click.Path(exists=True, dir_okay=False))
+    @click.option(
+        "-c",
+        "--color",
+        help="Results font color",
+        default="cyan",
+    )
+    @click.option("-j", "--json", help="Stdout results in json format", is_flag=True)
     @click.option("-a", "--auto-commit", is_flag=True, help="Enable auto-commit")
     @click.option(
         "-C",
@@ -414,7 +426,13 @@ class Commands:
         "-N", "--new-history-thread", is_flag=True, help="Start a new history thread"
     )
     def interactive(
-        database, auto_commit, disable_coloring, disable_suggestions, new_history_thread
+        database,
+        color,
+        json,
+        auto_commit,
+        disable_coloring,
+        disable_suggestions,
+        new_history_thread,
     ):
         """Execute sql statements interactively"""
         main = Interactive(
@@ -423,6 +441,8 @@ class Commands:
             disable_coloring=disable_coloring,
             disable_suggestions=disable_suggestions,
             new_history_thread=new_history_thread,
+            json=json,
+            color=color,
         )
         main.cmdloop()
 
