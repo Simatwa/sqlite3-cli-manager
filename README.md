@@ -13,7 +13,7 @@ Python tool designed to interact with SQLite databases via command-line interfac
 
 # Pre-requisite
 
-- [x] [Python>=3.9](https://python.org) *(optional)*
+- [x] [Python>=3.12](https://python.org) *(optional)*
 
 # Installation and Usage
 
