@@ -118,7 +118,7 @@ class Interactive(cmd.Cmd):
     intro = (
         "Welcome to interactive sqlite3-db manager.\n"
         "Run help or h <command> for usage info.\n"
-        "Repo : https://github.com/Simatwa/sqlite3-cli-manager"
+        "Repository : https://github.com/Simatwa/sqlite3-cli-manager"
     )
     __init_time = time.time()
 
@@ -158,7 +158,7 @@ class Interactive(cmd.Cmd):
 
         if not self.disable_coloring:
             cmd_prompt = (
-                f"╭─[`{Fore.CYAN}{getpass.getuser().capitalize()}@'localhost']`"
+                f"╭─[`{Fore.CYAN}{getpass.getuser().capitalize()}@localhost]`"
                 f"(`{Fore.MAGENTA}{self.db_manager.db_path})`"
                 f"~[`{Fore.LIGHTWHITE_EX}🕒{Fore.BLUE}{current_time}-`"
                 f"{Fore.LIGHTWHITE_EX}💻{Fore.RED}{find_range(self.__init_time, time.time(), True)}-`"
@@ -171,7 +171,7 @@ class Interactive(cmd.Cmd):
 
         else:
             return (
-                f"╭─[{getpass.getuser().capitalize()}@'localhost']"
+                f"╭─[{getpass.getuser().capitalize()}@localhost]"
                 f"({self.db_manager.db_path})"
                 f"~[🕒{current_time}"
                 f"-💻{find_range(self.__init_time, time.time(), True)}"
