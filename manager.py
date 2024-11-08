@@ -153,7 +153,8 @@ class TextToSql:
                 """
         \n
         For example:
-        User: List top 10 entries in the Linux table where distro contains letter 'a'LLM : {SELECT * FROM Linux WHERE distro LIKE '%a%';}
+        User: List top 10 entries in the Linux table where distro contains letter 'a'
+        LLM : {SELECT * FROM Linux WHERE distro LIKE '%a%';}
 
         User : Remove entries from table Linux whose id is greater than 10.
         LLLM : {DELETE * FROM Linux WHERE id > 10;}
@@ -425,7 +426,7 @@ class Interactive(cmd.Cmd):
         if line.startswith("./"):
             self.do_sys(line[2:])
             return
-        # self.onecmd
+
         elif line.startswith("!"):
             # Let's try to mimic the unix' previous command(s) execution shortcut
             history = self.completer_session.history.get_strings()
