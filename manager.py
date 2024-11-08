@@ -215,6 +215,7 @@ class Interactive(cmd.Cmd):
     intro = (
         "Welcome to interactive sqlite3-db manager.\n"
         "Run help or h <command> for usage info.\n"
+        "Use '!' to execute previous commands.\n"
         "Repository : https://github.com/Simatwa/sqlite3-cli-manager"
     )
     __init_time = time.time()
@@ -424,14 +425,14 @@ class Interactive(cmd.Cmd):
         if line.startswith("./"):
             self.do_sys(line[2:])
             return
-
+        # self.onecmd
         elif line.startswith("!"):
             # Let's try to mimic the unix' previous command(s) execution shortcut
             history = self.completer_session.history.get_strings()
             command_number = line.count("!")
             if len(history) >= command_number:
-                line = [history[-command_number - 1]]
-                prompt_confirmation = True
+                line = history[-command_number - 1]
+                return self.onecmd(line)
             else:
                 click.secho("Index out of range!", fg="yellow")
                 return
