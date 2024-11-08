@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 import os
+import re
 import cmd
 import sys
 import time
@@ -12,7 +13,11 @@ import typing as t
 from pathlib import Path
 from colorama import Fore
 from functools import wraps
+
+# Rich
 from rich.table import Table
+from rich.console import Console
+from rich.markdown import Markdown
 from rich.console import Console
 
 # prompt toolkit
@@ -73,13 +78,17 @@ class Sqlite3Manager:
         finally:
             cursor.close()
 
-    def tables(self):
+    def tables(self, tables_only: bool = False):
         """List tables available"""
         return self.execute_sql_command("PRAGMA table_list;")
 
     def table_columns(self, table: str):
         """List table columns and their metadata"""
         return self.execute_sql_command(f"PRAGMA table_info({table});")
+
+    def schema(self):
+        """Sqlite schema contents"""
+        return self.execute_sql_command("SELECT * FROM sqlite_schema;")
 
     def commit(self):
         """Commit changes"""
@@ -96,6 +105,95 @@ class Sqlite3Manager:
         """Close db connection"""
         if self.db_connection:
             self.db_connection.close()
+
+
+class TextToSql:
+    """Generate SQL Statement based on given prompt"""
+
+    def __init__(self, db_manager: Sqlite3Manager):
+        """Initializes `TextToSql`"""
+        try:
+            import pytgpt.auto as auto
+        except ImportError:
+            raise Exception(
+                "Looks like pytgpt isn't installed. Reistall it before using TextToSql - "
+                '"pip install python-tgpt"'
+            )
+        self.ai = auto.AUTO(update_file=False)
+        assert isinstance(
+            db_manager, Sqlite3Manager
+        ), f"db_manager must be an instance of {Sqlite3Manager} not {type(db_manager)}"
+        self.db_manager = db_manager
+        self.sql_pattern = r"\{([\w\W]*)\}"
+
+    @property
+    def context_prompt(self) -> str:
+        _, table_schema = self.db_manager.execute_sql_command(
+            """SELECT tbl_name, sql FROM sqlite_schema WHERE type='table'
+            AND NOT tbl_name LIKE '%sqlite%';
+            """
+        )
+        table_schema_text = "\n".join(
+            [tbl_schema[0] + " - " + tbl_schema[1] for tbl_schema in table_schema]
+        )
+        prompt = (
+            (
+                """You're going to act like TEXT to SQL translater.
+        Action to be performed on the sqlite3 database will be provided and then
+        you will generate a complete SQL statement for accomplishing the same.
+        Enclose the sql statement in curly braces '{}'. DO NOT ADD ANY OTHER TEXT
+        EXCEPT when seeking clarification or confirmation.
+
+        Given below are the database table names and the SQL statements used to create them:
+        \n"""
+            )
+            + "\n    "
+            + table_schema_text
+            + (
+                """
+        \n
+        For example:
+        User: List top 10 entries in the Linux table where distro contains letter 'a'LLM : {SELECT * FROM Linux WHERE distro LIKE '%a%';}
+
+        User : Remove entries from table Linux whose id is greater than 10.
+        LLLM : {DELETE * FROM Linux WHERE id > 10;}
+
+        If the user's request IS UNDOUBTEDBLY INCOMPLETE, seek clarification.
+        For example:
+        User: Add column to Linux table.
+        LLM: What kind of data will be stored in the column and suggest column name if possible?
+        User: The column will be storing maintainance status of the linux distros.
+        LLM: {ALTER TABLE Linux ADD COLUMN is_maintained BOOLEAN;}
+
+        If the user's request can be disastrous then seek clarification or confirmation accordingly.
+        These actions might include DELETE, ALTER and DROP.
+        """
+            )
+        )
+
+        return prompt
+
+    def process_response(self, response: str) -> list[str]:
+        """Tries to extract the sql statement from ai response
+
+        Args:
+            response (str): ai response
+        """
+        if response.startswith("{") and not response.endswith("}"):
+            response += "}"
+
+        sql_statements = re.findall(self.sql_pattern, response)
+        if sql_statements:
+            return [sql for sql in re.split(";", sql_statements[0]) if sql]
+        else:
+            Console().print(Markdown(response))
+            return []
+
+    def generate(self, prompt: str):
+        """Main method"""
+        self.ai.intro = self.context_prompt
+        assert prompt, f"Prompt cannot be null!"
+        return self.process_response(self.ai.chat(prompt))
 
 
 class HistoryCompletions(Completer):
@@ -130,6 +228,7 @@ class Interactive(cmd.Cmd):
         new_history_thread,
         json,
         color,
+        ai,
     ):
         super().__init__()
         self.__start_time = time.time()
@@ -146,6 +245,9 @@ class Interactive(cmd.Cmd):
         self.completer_session.completer = ThreadedCompleter(
             HistoryCompletions(self.completer_session, disable_suggestions)
         )
+        self.ai = ai
+        if self.ai:
+            self.text_to_sql = TextToSql(self.db_manager)
 
     @property
     def prompt(self):
@@ -282,6 +384,20 @@ class Interactive(cmd.Cmd):
         """
         os.system(line)
 
+    def do_sql(self, line):
+        """Execute sql statement"""
+        self.default("/sql " + line)
+
+    def do_ai(self, line):
+        """Generate sql statements with AI and execute"""
+        self.default("/ai " + line)
+
+    @cli_error_handler
+    def do_schema(self, line):
+        """Show database schema"""
+        success, tables = self.db_manager.schema()
+        Commands.stdout_data(success, tables, json=self.json, color=self.color)
+
     @cli_error_handler
     def do_tables(self, line):
         """Show database tables"""
@@ -304,12 +420,20 @@ class Interactive(cmd.Cmd):
         """Run sql statemnt against database"""
         if line.startswith("./"):
             self.do_sys(line[2:])
-
+            return
+        elif line.startswith("/sql"):
+            line = [line[4:]]
+        elif line.startswith("/ai"):
+            line = TextToSql(self.db_manager).generate(line[3:])
+        elif self.ai:
+            line = self.text_to_sql.generate(line)
         else:
-            self.__start_time = time.time()
-            success, response = self.db_manager.execute_sql_command(line)
+            line = [line]
+        self.__start_time = time.time()
+        for sql_statement in line:
+            success, response = self.db_manager.execute_sql_command(sql_statement)
             Commands.stdout_data(success, response, json=self.json, color=self.color)
-            self.__end_time = time.time()
+        self.__end_time = time.time()
 
     def do_exit(self, line):
         """Quit this program"""
@@ -388,12 +512,21 @@ class Commands:
         "database", type=click.Path(exists=True, dir_okay=False, resolve_path=True)
     )
     @click.option("-s", "--sql", multiple=True, help="Sql statements", required=True)
+    @click.option(
+        "-i", "--ai", is_flag=True, help="Generate sql statements from prompt by AI"
+    )
     @click.option("-j", "--json", is_flag=True, help="Stdout results in json format")
     @click.option("-q", "--quiet", is_flag=True, help="Do not stdout results")
-    def execute(database, sql, json, quiet):
+    def execute(database, sql, ai, json, quiet):
         """Run sql statements against database [AUTO-COMMITS]"""
         db_manager = Sqlite3Manager(database, auto_commit=True)
-        for sql_statement in sql:
+        if ai:
+            text_to_sql = TextToSql(db_manager)
+            ai_gen_sql_statements = []
+            for prompt in sql:
+                ai_gen_sql_statements.extend(text_to_sql.generate(prompt))
+
+        for sql_statement in sql if not ai else ai_gen_sql_statements:
             success, tables = db_manager.execute_sql_command(sql_statement)
             if not quiet:
                 Commands.stdout_data(success, tables, json=json)
@@ -409,6 +542,9 @@ class Commands:
     )
     @click.option("-j", "--json", help="Stdout results in json format", is_flag=True)
     @click.option("-a", "--auto-commit", is_flag=True, help="Enable auto-commit")
+    @click.option(
+        "-i", "--ai", is_flag=True, help="Generate sql statements from prompt by AI"
+    )
     @click.option(
         "-C",
         "--disable-coloring",
@@ -429,6 +565,7 @@ class Commands:
         color,
         json,
         auto_commit,
+        ai,
         disable_coloring,
         disable_suggestions,
         new_history_thread,
@@ -442,6 +579,7 @@ class Commands:
             new_history_thread=new_history_thread,
             json=json,
             color=color,
+            ai=ai,
         )
         main.cmdloop()
 
