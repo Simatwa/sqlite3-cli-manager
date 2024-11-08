@@ -78,7 +78,7 @@ class Sqlite3Manager:
         finally:
             cursor.close()
 
-    def tables(self, tables_only: bool = False):
+    def tables(self):
         """List tables available"""
         return self.execute_sql_command("PRAGMA table_list;")
 
@@ -179,7 +179,7 @@ class TextToSql:
         Args:
             response (str): ai response
         """
-        if response.startswith("{") and not response.endswith("}"):
+        if response.startswith("{") and not response.strip().endswith("}"):
             response += "}"
 
         sql_statements = re.findall(self.sql_pattern, response)
@@ -227,6 +227,7 @@ class Interactive(cmd.Cmd):
         disable_suggestions,
         new_history_thread,
         json,
+        yes,
         color,
         ai,
     ):
@@ -236,6 +237,7 @@ class Interactive(cmd.Cmd):
         self.db_manager = Sqlite3Manager(db_path, auto_commit)
         self.disable_coloring = disable_coloring
         self.json = json
+        self.yes = yes
         self.color = color
         history_file_path = Path.home() / ".sqlite3-cli-manager-history.txt"
         if new_history_thread and history_file_path.exists():
@@ -416,21 +418,44 @@ class Interactive(cmd.Cmd):
             click.secho("Table name is required.", fg="yellow")
 
     @cli_error_handler
-    def default(self, line):
+    def default(self, line: str, prompt_confirmation: bool = False, ai_generated=False):
         """Run sql statemnt against database"""
+
         if line.startswith("./"):
             self.do_sys(line[2:])
             return
+
+        elif line.startswith("!"):
+            # Let's try to mimic the unix' previous command(s) execution shortcut
+            history = self.completer_session.history.get_strings()
+            command_number = line.count("!")
+            if len(history) >= command_number:
+                line = [history[-command_number - 1]]
+                prompt_confirmation = True
+            else:
+                click.secho("Index out of range!", fg="yellow")
+                return
+
         elif line.startswith("/sql"):
             line = [line[4:]]
         elif line.startswith("/ai"):
             line = TextToSql(self.db_manager).generate(line[3:])
+            ai_generated = prompt_confirmation = True
         elif self.ai:
             line = self.text_to_sql.generate(line)
+            ai_generated = prompt_confirmation = True
         else:
             line = [line]
         self.__start_time = time.time()
         for sql_statement in line:
+            if (
+                not self.yes
+                and prompt_confirmation
+                and not click.confirm("[Exc] - " + sql_statement)
+            ):
+                continue
+            if ai_generated:
+                self.completer_session.history.append_string(sql_statement)
             success, response = self.db_manager.execute_sql_command(sql_statement)
             Commands.stdout_data(success, response, json=self.json, color=self.color)
         self.__end_time = time.time()
@@ -541,6 +566,12 @@ class Commands:
         default="cyan",
     )
     @click.option("-j", "--json", help="Stdout results in json format", is_flag=True)
+    @click.option(
+        "-y",
+        "--yes",
+        help="Okay to execution of AI generated sql statements",
+        is_flag=True,
+    )
     @click.option("-a", "--auto-commit", is_flag=True, help="Enable auto-commit")
     @click.option(
         "-i", "--ai", is_flag=True, help="Generate sql statements from prompt by AI"
@@ -564,6 +595,7 @@ class Commands:
         database,
         color,
         json,
+        yes,
         auto_commit,
         ai,
         disable_coloring,
@@ -578,6 +610,7 @@ class Commands:
             disable_suggestions=disable_suggestions,
             new_history_thread=new_history_thread,
             json=json,
+            yes=yes,
             color=color,
             ai=ai,
         )
