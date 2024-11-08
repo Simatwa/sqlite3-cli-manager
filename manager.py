@@ -116,7 +116,7 @@ class TextToSql:
             import pytgpt.auto as auto
         except ImportError:
             raise Exception(
-                "Looks like pytgpt isn't installed. Reistall it before using TextToSql - "
+                "Looks like pytgpt isn't installed. Install it before using TextToSql - "
                 '"pip install python-tgpt"'
             )
         self.ai = auto.AUTO(update_file=False)
