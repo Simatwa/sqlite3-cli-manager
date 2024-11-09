@@ -35,6 +35,10 @@ __repo__ = "https://github.com/Simatwa/sqlite3-cli-manager.git"
 get_arg = lambda e: e.args[1] if e.args and len(e.args) > 1 else str(e)
 """An ugly anonymous function to extract exception message"""
 
+table_column_headers = ("cid", "name", "type", "notnull", "default", "pk")
+
+table_headers = ("_", "name", "type", "_", "_", "_")
+
 
 def cli_error_handler(func):
     """Decorator for handling exceptions accordingly"""
@@ -68,19 +72,29 @@ class Sqlite3Manager:
     ) -> t.Tuple[t.Any]:
         """Run sql statements against database"""
         try:
-            cursor = sqlite3.Cursor(self.db_connection)
+            cursor = self.db_connection.cursor()
             cursor.execute(statement)
             if commit:
                 self.commit()
-            return (True, cursor.fetchall())
+            resp = (True, cursor.fetchall())
         except Exception as e:
-            return (False, e)
+            resp = (False, e)
         finally:
             cursor.close()
+            return resp
 
-    def tables(self):
+    def tables(self, tbl_names_only: bool = False):
         """List tables available"""
-        return self.execute_sql_command("PRAGMA table_list;")
+        return (
+            [
+                entry[0]
+                for entry in self.execute_sql_command(
+                    "SELECT tbl_name FROM sqlite_schema WHERE type='table'"
+                )[1]
+            ]
+            if tbl_names_only
+            else self.execute_sql_command("PRAGMA table_list;")
+        )
 
     def table_columns(self, table: str):
         """List table columns and their metadata"""
@@ -119,7 +133,10 @@ class TextToSql:
                 "Looks like pytgpt isn't installed. Install it before using TextToSql - "
                 '"pip install python-tgpt"'
             )
-        self.ai = auto.AUTO(update_file=False)
+        history_file = Path.home() / ".sqlite-cli-manager-ai-chat-history.txt"
+        if history_file.exists():
+            os.remove(history_file)
+        self.ai = auto.AUTO(filepath=history_file)
         assert isinstance(
             db_manager, Sqlite3Manager
         ), f"db_manager must be an instance of {Sqlite3Manager} not {type(db_manager)}"
@@ -198,14 +215,34 @@ class TextToSql:
 
 
 class HistoryCompletions(Completer):
-    def __init__(self, session, disable_suggestions):
+    def __init__(self, session, disable_suggestions, db_manager: Sqlite3Manager):
         self.session: PromptSession = session
         self.disable_suggestions = disable_suggestions
+        self.db_manager = db_manager
 
     def get_completions(self, document: Document, complete_event):
         if self.disable_suggestions:
             return
         text = document.text
+        processed_text = text.lower().strip()
+        if processed_text.endswith("from"):
+            # Suggest available table names
+            for table in self.db_manager.tables(tbl_names_only=True):
+                yield Completion(text + " " + table, start_position=-len(text))
+
+        elif processed_text.endswith("where"):
+            # Suggest columns for a particular table
+            db_tables = self.db_manager.tables(tbl_names_only=True)
+            target_table = re.findall(
+                r".+from\s([\w_]+)\s.*", text, flags=re.IGNORECASE
+            )
+            if target_table and target_table[0] in db_tables:
+                for column in [
+                    entry[1]
+                    for entry in self.db_manager.table_columns(target_table[0])[1]
+                ]:
+                    yield Completion(text + " " + column, start_position=-len(text))
+
         history = self.session.history.get_strings()
         for entry in reversed(list(set(history))):
             if entry.startswith(text):
@@ -246,8 +283,8 @@ class Interactive(cmd.Cmd):
             os.remove(history_file_path)
         history = FileHistory(history_file_path)
         self.completer_session = PromptSession(history=history)
-        self.completer_session.completer = ThreadedCompleter(
-            HistoryCompletions(self.completer_session, disable_suggestions)
+        self.completer_session.completer = HistoryCompletions(
+            self.completer_session, disable_suggestions, self.db_manager
         )
         self.ai = ai
         if self.ai:
@@ -400,13 +437,26 @@ class Interactive(cmd.Cmd):
     def do_schema(self, line):
         """Show database schema"""
         success, tables = self.db_manager.schema()
-        Commands.stdout_data(success, tables, json=self.json, color=self.color)
+        Commands.stdout_data(
+            success,
+            tables,
+            json=self.json,
+            color=self.color,
+            tbl="sqlite_schema",
+            db_manager=self.db_manager,
+        )
 
     @cli_error_handler
     def do_tables(self, line):
         """Show database tables"""
         success, tables = self.db_manager.tables()
-        Commands.stdout_data(success, tables, json=self.json, color=self.color)
+        Commands.stdout_data(
+            success,
+            tables,
+            json=self.json,
+            color=self.color,
+            headers=table_headers,
+        )
 
     @cli_error_handler
     def do_columns(self, line):
@@ -415,7 +465,13 @@ class Interactive(cmd.Cmd):
             columns <table-name>"""
         if line:
             success, tables = self.db_manager.table_columns(line)
-            Commands.stdout_data(success, tables, json=self.json, color=self.color)
+            Commands.stdout_data(
+                success,
+                tables,
+                json=self.json,
+                color=self.color,
+                headers=table_column_headers,
+            )
         else:
             click.secho("Table name is required.", fg="yellow")
 
@@ -459,7 +515,14 @@ class Interactive(cmd.Cmd):
             if ai_generated:
                 self.completer_session.history.append_string(sql_statement)
             success, response = self.db_manager.execute_sql_command(sql_statement)
-            Commands.stdout_data(success, response, json=self.json, color=self.color)
+            Commands.stdout_data(
+                success,
+                response,
+                json=self.json,
+                color=self.color,
+                sql_query=sql_statement,
+                db_manager=self.db_manager,
+            )
         self.__end_time = time.time()
 
     def do_exit(self, line):
@@ -478,35 +541,81 @@ class Commands:
         color: str = "cyan",
         title: str = None,
         json: bool = False,
+        headers: list[str] = None,
+        sql_query: str = None,
+        db_manager: Sqlite3Manager = None,
+        tbl: str = None,
     ):
-        """Stdout info.
+        """Stdout table data if any.
 
         Args:
             data (t.List[t.Tuple[t.Any]]):
             color (str, optional):. Defaults to 'cyan'.
             title (str, optional): Table title. Defaults to None.
             json (bool, optional): Output in Json format. Defaults to False.
+            sql_query (str, optional): Sql statement used to make the query.
+            db_manager (Sqlite3Manager, optional)
+            tbl (str, optional): Table name where * has been sourced from.
         """
 
         if not success:
             raise data
 
         elif data and data[0]:
-            if json:
-                entry_items = {}
-                for index, entry in enumerate(data):
-                    entry_items[index] = entry
-                rich.print_json(data=entry_items)
-                return
 
             table = Table(title=title, show_lines=True, show_header=True, style=color)
             ref_data = data[0]
             table.add_column("Index", justify="center")
-            for x in range(len(ref_data)):
-                table.add_column(f"Col. {x+1}")
-            for index, entry in enumerate(data):
-                table.add_row(*[str(index)] + [str(token) for token in entry])
-            rich.print(table)
+
+            def add_headers(header_values: list[str]):
+                for header in header_values:
+                    table.add_column(header)
+
+            if headers:
+                add_headers(headers)
+
+            elif tbl and db_manager:
+                # extract column names
+                success, entries = db_manager.table_columns(tbl)
+                if success:
+                    add_headers([entry[1] for entry in entries])
+
+            elif sql_query and db_manager:
+                re_args = (sql_query, re.IGNORECASE)
+                if re.match(r"^select.*", *re_args):
+                    specific_column_names_string = re.findall(
+                        r"^select\s+([\w_,\s]+)\s+from.+", *re_args
+                    )
+                    if re.match(r"^select\s+\.*", *re_args):
+                        table_name = re.findall(r".+from\s+([\w_]+).*", *re_args)
+                        if table_name:
+                            tbl_name = table_name[0]
+                            success, entries = db_manager.table_columns(tbl_name)
+                            if success:
+                                headers = [entry[1] for entry in entries]
+
+                    elif specific_column_names_string:
+                        headers = re.findall(r"\w+", specific_column_names_string[0])
+
+                if headers:
+                    add_headers(headers)
+            else:
+                add_headers([f"Col. {x+1}" for x in range(len(ref_data))])
+
+            if json:
+                entry_items = {}
+                for index, entry in enumerate(data):
+                    if headers:
+                        entry = dict(zip(headers, entry))
+
+                    entry_items[index] = entry
+                rich.print_json(data=entry_items)
+
+                return
+            else:
+                for index, entry in enumerate(data):
+                    table.add_row(*[str(index)] + [str(token) for token in entry])
+                    rich.print(table)
 
     @staticmethod
     @click.command()
@@ -518,7 +627,7 @@ class Commands:
         """List tables contained in the database"""
         db_manager = Sqlite3Manager(database)
         success, tables = db_manager.tables()
-        Commands.stdout_data(success, tables, json=json)
+        Commands.stdout_data(success, tables, json=json, headers=table_headers)
 
     @staticmethod
     @click.command()
@@ -531,14 +640,16 @@ class Commands:
         """List columns for a particular table"""
         db_manager = Sqlite3Manager(database)
         success, tables = db_manager.table_columns(table)
-        Commands.stdout_data(success, tables, json=json)
+        Commands.stdout_data(success, tables, json=json, headers=table_column_headers)
 
     @staticmethod
     @click.command()
     @click.argument(
         "database", type=click.Path(exists=True, dir_okay=False, resolve_path=True)
     )
-    @click.option("-s", "--sql", multiple=True, help="Sql statements", required=True)
+    @click.option(
+        "-s", "--sql", multiple=True, help="Sql statement or prompt", required=True
+    )
     @click.option(
         "-i", "--ai", is_flag=True, help="Generate sql statements from prompt by AI"
     )
@@ -556,7 +667,9 @@ class Commands:
         for sql_statement in sql if not ai else ai_gen_sql_statements:
             success, tables = db_manager.execute_sql_command(sql_statement)
             if not quiet:
-                Commands.stdout_data(success, tables, json=json)
+                Commands.stdout_data(
+                    success, tables, json=json, sql_query=sql_statement
+                )
 
     @staticmethod
     @click.command()

@@ -9,7 +9,7 @@
 <a href="https://github.com/Simatwa/sqlite3-cli-manager/releases"><img src="https://img.shields.io/github/release-date/Simatwa/sqlite3-cli-manager?label=Release date&logo=github" alt="release date"></img></a>
 </p>
 
-Python tool designed to interact with SQLite databases via command-line interface
+This tool is designed to interact with SQLite databases via command-line interface. Other than just issuing the sql staments by yourself, you can let AI generate sql statements based on your prompt.
 
 # Pre-requisite
 
@@ -29,7 +29,7 @@ pip install -r requirements.txt
 
 Alternatively, you can download standalone executables for your system from [here](https://github.com/Simatwa/sqlite3-cli-manager/releases/latest).
 
-## Usage 
+## Usage
 
 <details open>
 
