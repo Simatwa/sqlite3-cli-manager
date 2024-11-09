@@ -131,7 +131,7 @@ class Sqlite3Manager:
 class TextToSql:
     """Generate SQL Statement based on given prompt"""
 
-    def __init__(self, db_manager: Sqlite3Manager):
+    def __init__(self, db_manager: Sqlite3Manager, follow_up: bool = False):
         """Initializes `TextToSql`"""
         try:
             from pytgpt.auto import AUTO
@@ -143,7 +143,7 @@ class TextToSql:
         history_file = Path.home() / ".sqlite-cli-manager-ai-chat-history.txt"
         if history_file.exists():
             os.remove(history_file)
-        self.ai = AUTO(filepath=str(history_file))
+        self.ai = AUTO(is_conversation=follow_up, filepath=str(history_file))
         assert isinstance(
             db_manager, Sqlite3Manager
         ), f"db_manager must be an instance of {Sqlite3Manager} not {type(db_manager)}"
@@ -162,13 +162,45 @@ class TextToSql:
         )
         prompt = (
             (
-                """You're going to act like TEXT to SQL translater.
-        Action to be performed on the sqlite3 database will be provided and then
+                """You're going to act like TEXT-to-SQL translater.
+        | INSTRUCTIONS |
+
+        1. Action to be performed on the sqlite3 database will be provided by user and then
         you will generate a complete SQL statement for accomplishing the same.
-        Enclose the sql statement in curly braces '{}'. DO NOT ADD ANY OTHER TEXT
+
+        1.1. Enclose the sql statement in curly braces '{}'. DO NOT ADD ANY OTHER TEXT
         EXCEPT when seeking clarification or confirmation.
 
-        Given below are the database table names and the SQL statements used to create them:
+        For example:
+
+        User: List first 10 entries in the Linux table where distro contains letter 'a'
+        LLM : {SELECT * FROM Linux WHERE distro LIKE '%a%';}
+
+        User : Remove entries from table Linux whose id is greater than 10.
+        LLLM : {DELETE * FROM Linux WHERE id > 10;}
+
+        2. If the user's request IS UNDOUBTEDBLY INCOMPLETE, seek clarification.
+
+        For example:
+
+        User: Add column to Linux table.
+        LLM: Describe the data to be stored in the column and suggest column name if possible?
+        User: The column will be storing maintainance status of the linux distros.
+        LLM: {ALTER TABLE Linux ADD COLUMN is_maintained BOOLEAN;}
+
+        3. If the user's request can be disastrous then seek clarification or confirmation accordingly.
+        These actions might include DELETE, ALTER and DROP.
+
+        For example:
+
+        User: Remove Linux table
+        LLM: Removing Linux table cannot be undone. Are you sure to perform that?
+        User: Yes
+        LLM: {DROP TABLE Linux}
+
+        4. AFTER clarification or confirmation, your proceeding responses SHOULD ABIDE to instructions 1 and 2.
+
+        Given below are the table names and the SQL statements used to create them in the database:
         \n"""
             )
             + "\n    "
@@ -176,22 +208,6 @@ class TextToSql:
             + (
                 """
         \n
-        For example:
-        User: List first 10 entries in the Linux table where distro contains letter 'a'
-        LLM : {SELECT * FROM Linux WHERE distro LIKE '%a%';}
-
-        User : Remove entries from table Linux whose id is greater than 10.
-        LLLM : {DELETE * FROM Linux WHERE id > 10;}
-
-        If the user's request IS UNDOUBTEDBLY INCOMPLETE, seek clarification.
-        For example:
-        User: Add column to Linux table.
-        LLM: Describe the data to be stored in the column and suggest column name if possible?
-        User: The column will be storing maintainance status of the linux distros.
-        LLM: {ALTER TABLE Linux ADD COLUMN is_maintained BOOLEAN;}
-
-        If the user's request can be disastrous then seek clarification or confirmation accordingly.
-        These actions might include DELETE, ALTER and DROP.
         """
             )
         )
@@ -277,6 +293,7 @@ class Interactive(cmd.Cmd):
         yes,
         color,
         ai,
+        follow_up,
     ):
         super().__init__()
         self.__start_time = time.time()
@@ -286,6 +303,7 @@ class Interactive(cmd.Cmd):
         self.json = json
         self.yes = yes
         self.color = color
+        self.follow_up = follow_up
         history_file_path = Path.home() / ".sqlite3-cli-manager-history.txt"
         if new_history_thread and history_file_path.exists():
             os.remove(history_file_path)
@@ -296,7 +314,7 @@ class Interactive(cmd.Cmd):
         )
         self.ai = ai
         if self.ai:
-            self.text_to_sql = TextToSql(self.db_manager)
+            self.text_to_sql = TextToSql(self.db_manager, follow_up)
 
     @property
     def prompt(self):
@@ -510,7 +528,7 @@ class Interactive(cmd.Cmd):
             line = [line[4:].strip()]
         elif line.startswith("/ai"):
             if not hasattr(self, "text_to_sql"):
-                self.text_to_sql = TextToSql(self.db_manager)
+                self.text_to_sql = TextToSql(self.db_manager, self.follow_up)
             line = self.text_to_sql.generate(line[3:].strip())
             prompt_confirmation = True
             ai_generated = True
@@ -723,6 +741,9 @@ class Commands:
         "-i", "--ai", is_flag=True, help="Generate sql statements from prompt by AI"
     )
     @click.option(
+        "-f", "--follow-up", is_flag=True, help="Add previous chats with AI to context"
+    )
+    @click.option(
         "-C",
         "--disable-coloring",
         is_flag=True,
@@ -744,6 +765,7 @@ class Commands:
         yes,
         auto_commit,
         ai,
+        follow_up,
         disable_coloring,
         disable_suggestions,
         new_history_thread,
@@ -759,6 +781,7 @@ class Commands:
             yes=yes,
             color=color,
             ai=ai,
+            follow_up=follow_up,
         )
         main.cmdloop()
 
