@@ -509,7 +509,9 @@ class Interactive(cmd.Cmd):
         elif line.startswith("/sql"):
             line = [line[4:].strip()]
         elif line.startswith("/ai"):
-            line = TextToSql(self.db_manager).generate(line[3:].strip())
+            if not hasattr(self, "text_to_sql"):
+                self.text_to_sql = TextToSql(self.db_manager)
+            line = self.text_to_sql.generate(line[3:].strip())
             prompt_confirmation = True
             ai_generated = True
         elif self.ai:
@@ -538,6 +540,16 @@ class Interactive(cmd.Cmd):
                 db_manager=self.db_manager,
             )
         self.__end_time = time.time()
+
+    @cli_error_handler
+    def do_reset(self, line):
+        """Start new conversation thread with AI"""
+        assert hasattr(self, "text_to_sql"), f"You haven't chat with AI yet!"
+        assert hasattr(
+            self.text_to_sql.ai, "conversation"
+        ), f"Your haven't interacted with AI yet!"
+        self.text_to_sql.ai.conversation.chat_history = ""
+        logging.info("New conversation thread started.")
 
     def do_exit(self, line):
         """Quit this program"""
